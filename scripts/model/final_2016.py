@@ -31,9 +31,10 @@ def read_all_polls():
 		'end.date',
 		'clinton', 'trump', 'undecided', 'other', 'johnson', 'mcmullin']
 	df = pd.read_csv("../../data/all_polls.csv", usecols=cols)
-	pd.set_option("display.max_rows", None, "display.max_columns", None)
+#	pd.set_option("display.max_rows", None, "display.max_columns", None)
 
 	# Mutations
+	df = df.rename(columns={"number.of.observations": "n", "population": "polltype"})
 
 	# Matching equivalent names due to data inconsistencies
 	df = df.replace("Fox News", "FOX")
@@ -44,13 +45,23 @@ def read_all_polls():
 	df['undecided'] = df['undecided'].replace(NaN, 0)
 	df['other'] = df['other'].replace(NaN, 0) + df['johnson'].replace(NaN, 0) + df['mcmullin'].replace(NaN, 0)
 
+	# Vote shares etc
+	df['two_party_sum'] = df['clinton'] + df['trump']
+	df['n_clinton'] = round(df['n'] * df['clinton'] / 100)
+	df['pct_clinton'] = df['clinton'] / df['two_party_sum']
+	df['n_trump'] = round(df['n'] * df['trump'] / 100)
+	df['pct_trump'] = df['trump'] / df['two_party_sum']
+	
+	return df
+
 
 
 def main():
 	print("Example usages below for undertanding the code: \n\n")
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
 
-	read_all_polls()
+	df = read_all_polls()
+	print(df)
 
 
 
