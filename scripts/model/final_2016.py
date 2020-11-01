@@ -52,11 +52,42 @@ def read_all_polls():
 
 	min_T = df['t'].min()
 	df['index_t'] = [(timedelta(days=1)  + x - min_T).days for x in df['t']]
+#	df['index_p'] = 
 
 	return df
 
 #def read_potus_results_76_16(df):
+
+
+def read_state_context():
+	df = pd.read_csv("../../data/2012.csv")	
+
+	national_score = sum( df['obama_count'] ) / sum( df['obama_count'] + df['romney_count'] )
+
+	df['score'] = df['obama_count'] / (df['romney_count'] + df['obama_count'])
+	df['national_score'] = [national_score] * len( df['score'] )
+	df['delta'] = df['score'] - df['national_score']
+	df['share_national_vote'] = df['total_count']*(1+df['adult_pop_growth_2011_15']) /sum(df['total_count']*(1+df['adult_pop_growth_2011_15']))
+
+	# set prior differences
+	prior_diff_score = {key: value for (key, value) in zip(df['state'], df['delta'])}
 	
+	# set state weights
+	sum_share_national_vote = sum(df['share_national_vote'])
+	state_weights = {key: value / sum_share_national_vote for (key, value) in zip(df['state'], df['share_national_vote']) }
+
+	# set electoral votes per state
+	ev_state = {key: value for (key, value) in zip(df['state'], df['ev'])}
+
+	return df
+
+def create_cov_matrices():
+	cols = ['year', 'state', 'dem']
+	df = pd.read_csv("../../data/potus_results_76_16.csv", usecols=cols)
+	df = df.loc[df['year'] == 2016]
+
+
+	return df
 
 
 def main():
@@ -65,7 +96,10 @@ def main():
 
 	df = read_all_polls()
 	print(df)
-
+	df = read_state_context()
+	print(df)
+	df = create_cov_matrices()
+	print(df)
 
 
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
