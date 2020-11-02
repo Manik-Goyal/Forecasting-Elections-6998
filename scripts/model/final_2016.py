@@ -82,15 +82,55 @@ def read_state_context():
 	return df
 
 def create_cov_matrices():
-	cols = ['year', 'state', 'dem']
+	cols = ['state', 'year', 'dem']
 	df = pd.read_csv("../../data/potus_results_76_16.csv", usecols=cols)
-	df = df.loc[df['year'] == 2016]
+	states = df.loc[df['year'] == 2016].copy()
+	states = states.reset_index()
+	states = states.dropna()
+	states = states.rename(columns={'year': 'variable', 'dem':'value'})
+	states = states.drop(columns=['index'])
+#	print("States: \n\n ", states, "\n\n")
+
+	cols = ['white_pct', 'black_pct', 'hisp_other_pct', 'college_pct', 'wwc_pct', 'median_age', 'state']
+	census = pd.read_csv('../../data/acs_2013_variables.csv', usecols=cols)
+	census = census.dropna()
+	census_size = len(census['state'])
+	for col in cols[:-1]:
+		dfTemp = census[['state', col]]
+		dfTemp = dfTemp.rename(columns={col: 'value'})
+		dfTemp.insert(1, 'variable', [col] * census_size)
+		states = states.append(dfTemp, ignore_index=True)
+
+	cols = ['state', 'average_log_pop_within_5_miles']
+	urban = pd.read_csv('../../data/urbanicity_index.csv', usecols=cols)
+	urban = urban.dropna()
+	urban = urban.rename(columns={'average_log_pop_within_5_miles':'value'})
+	urban.insert(1, 'variable', ['pop_density'] * len(urban['state']))
+	states = states.append(urban, ignore_index=True)
 
 
-	return df
+	white_evangel = pd.read_csv('../../data/white_evangel_pct.csv')
+	white_evangel = white_evangel.dropna()
+	white_evangel = white_evangel.rename(columns={'pct_white_evangel':'value'})	
+	white_evangel.insert(1, 'variable', ['pct_white_evangel'] * len(white_evangel['state']))
+	states = states.append(white_evangel, ignore_index=True)
+
+	state_abbrv = states.state.unique()
+	final_df = pd.DataFrame(columns = state_abbrv)
+
+	var = states.variable.unique()
+
+	for v in var:
+		tempValues = pd.DataFrame(columns = state_abbrv)
+		for st in state_abbrv:
+			temp = states.loc[(states['variable'] == v) & (states['state'] == st)].copy()
+			tempValues
+		final_df[st] = final_df.append(tempValues)
+	return final_df
 
 
 def main():
+	pd.set_option("display.max_rows", None, "display.max_columns", None)
 	print("Example usages below for undertanding the code: \n\n")
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
 
@@ -108,3 +148,4 @@ def main():
 
 if __name__ == "__main__":
 	main()
+
