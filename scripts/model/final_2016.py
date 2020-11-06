@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from datetime import timedelta
+import copy
 
  
 NaN = float('nan')
@@ -117,16 +118,68 @@ def create_cov_matrices():
 
 	state_abbrv = states.state.unique()
 	final_df = pd.DataFrame(columns = state_abbrv)
+	states = states.pivot(index='variable', columns='state', values='value')
+	states.fillna(0)
 
-	var = states.variable.unique()
+	indices = list(states.index.values) 
+	mins, maxes = states.min(axis=1).tolist(), states.max(axis=1).tolist()
+	print(indices, mins)
+	for i in range(len(indices)):
+		states.iloc[i] = (states.iloc[i] - mins[i]) / (maxes[i] - mins[i])
 
-	for v in var:
-		tempValues = pd.DataFrame(columns = state_abbrv)
-		for st in state_abbrv:
-			temp = states.loc[(states['variable'] == v) & (states['state'] == st)].copy()
-			tempValues
-		final_df[st] = final_df.append(tempValues)
-	return final_df
+
+	# Our covariance matrix for the data we have transformed	
+	cov = states.cov()
+	cov[cov < 0 ] = 0
+	
+
+	temp_cov = copy.deepcopy(cov)
+	np.fill_diagonal(temp_cov.values, float('NaN'))
+	
+
+	lamda = 0.75
+	arr = pd.DataFrame(data=np.ones((51,51)))
+	a = 1
+
+	state_correlation_polling = lamda * cov + (1 - lamda) * arr
+	df1 = lamda * cov
+	df2 = (1 - lamda) * arr
+	df2.columns = df1.columns
+	df2.index = df1.index
+	state_correlation_polling = df1.add(df2)
+
+
+	# covariance matrix for polling error
+	state_covariance_polling_bias =  pd.DataFrame(data=cov_matrix(51, 0.078**2, 0.9), columns = df1.columns, index=df1.index)
+	state_covariance_polling_bias = state_covariance_polling_bias * state_correlation_polling
+
+	# covariance for prior e-day prediction
+	state_covariance_mu_b_T = pd.DataFrame(data=cov_matrix(51, 0.18**2, 0.9), columns = df1.columns, index=df1.index)
+	state_covariance_mu_b_T = state_covariance_mu_b_T * state_correlation_polling
+
+	# covariance matrix for random walks
+	state_covariance_mu_b_walk = pd.DataFrame(cov_matrix(51, 0.017**2, 0.9), columns = df1.columns, index=df1.index)
+	state_covariance_mu_b_walk = state_covariance_mu_b_walk * state_correlation_polling # we want the demo correlations for filling in gaps in the polls
+
+
+	## MAKE DEFAULT COV MATRICES
+	# we're going to make TWO covariance matrix here and pass it
+	# and 3 scaling values to stan, where the 3 values are 
+	# (1) the national sd on the polls, (2) the national sd
+	# on the prior and (3) the national sd of the random walk
+	# make initial covariance matrix (using specified correlation)
+	state_covariance_0 = pd.DataFrame(cov_matrix(51, 0.07**2, 0.9), columns = df1.columns, index=df1.index)
+	state_covariance_0 = state_covariance_0 * state_correlation_polling # we want the demo correlations for filling in gaps in the polls
+
+
+
+
+
+
+
+
+
+	return states
 
 
 def main():
@@ -139,7 +192,6 @@ def main():
 	df = read_state_context()
 	print(df)
 	df = create_cov_matrices()
-	print(df)
 
 
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
