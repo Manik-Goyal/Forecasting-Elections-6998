@@ -52,7 +52,7 @@ def model(data):
     polling_bias_scale = data["polling_bias_scale"]
 
     #Data Transformation
-    national_cov_matrix_error_sd = torch.sqrt(state_weights.T * state_covariance_0 * state_weights)
+    national_cov_matrix_error_sd = torch.sqrt(state_weights.T @ state_covariance_0 @ state_weights)
 
     #Scale Covariance
     ss_cov_poll_bias = state_covariance_0 * (polling_bias_scale/national_cov_matrix_error_sd)**2
@@ -104,9 +104,9 @@ def model(data):
 
     #Transformed Parameters
     mu_b = torch.empty(S, T) #initalize mu_b
-    mu_b[:,T] = cholesky_ss_cov_mu_b_T * raw_mu_b_T + mu_b_prior
+    mu_b[:,T] = cholesky_ss_cov_mu_b_T @ raw_mu_b_T + mu_b_prior
     for i in range(1,T):
-        mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk * raw_mu_b[:, T - i] + mu_b[:, T + 1 - i]
+        mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk @ raw_mu_b[:, T - i] + mu_b[:, T + 1 - i]
     
     mu_c = raw_mu_c * sigma_c
     mu_m = raw_mu_m * sigma_m
@@ -118,9 +118,9 @@ def model(data):
     for t in range(2,T+1):
         e_bias[t] = mu_e_bias + rho_e_bias * (e_bias[t - 1] - mu_e_bias) + raw_e_bias[t] * sigma_rho
 
-    polling_bias = cholesky_ss_cov_poll_bias * raw_polling_bias
-    national_mu_b_average = mu_b.t() * state_weights
-    national_polling_bias_average = polling_bias.T * state_weights
+    polling_bias = cholesky_ss_cov_poll_bias @ raw_polling_bias
+    national_mu_b_average = mu_b.t() @ state_weights
+    national_polling_bias_average = polling_bias.T @ state_weights
 
     logit_pi_democrat_state = torch.empty(N_state_polls)
     logit_pi_democrat_national = torch.empty(N_national_polls)
