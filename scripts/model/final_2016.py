@@ -6,6 +6,8 @@ import copy
 
  
 NaN = float('nan')
+
+
 def cov_matrix(n, sigma2, rho):
 	m = np.ones(shape=(n,n)) * rho
 	m2 = np.zeros(shape=(n,n))
@@ -15,7 +17,16 @@ def cov_matrix(n, sigma2, rho):
 	
 	return(np.matmul(np.matmul(m2, m), m2))
 
+def check_cov_matrix(mat, weights):
+	diag = np.diag(mat)
 
+
+
+def fit_rmse_day_x(x):
+	y = []
+	for num in x:
+		y.append( 0.03 + (10 **(-6.6)) * (num ** 2) )
+	return y	
 
 def read_all_polls():
 	cols = ['state', 'pollster', 'number.of.observations','population', 'mode', 
@@ -75,14 +86,16 @@ def read_state_context():
 	
 	# set state weights
 	sum_share_national_vote = sum(df['share_national_vote'])
-	state_weights = {key: value / sum_share_national_vote for (key, value) in zip(df['state'], df['share_national_vote']) }
+	col_names = df['state'].tolist()
+	state_weights = df['ev'] / sum_share_national_vote
+	state_weights.index = col_names
 
 	# set electoral votes per state
 	ev_state = {key: value for (key, value) in zip(df['state'], df['ev'])}
 
-	return df
+	return state_weights, df
 
-def create_cov_matrices():
+def create_cov_matrices(state_weights):
 	cols = ['state', 'year', 'dem']
 	df = pd.read_csv("../../data/potus_results_76_16.csv", usecols=cols)
 	states = df.loc[df['year'] == 2016].copy()
@@ -171,13 +184,22 @@ def create_cov_matrices():
 	state_covariance_0 = pd.DataFrame(cov_matrix(51, 0.07**2, 0.9), columns = df1.columns, index=df1.index)
 	state_covariance_0 = state_covariance_0 * state_correlation_polling # we want the demo correlations for filling in gaps in the polls
 
+	# save the inital scaling factor
+	national_cov_matrix_error_sd = ( (state_weights.transpose().dot(state_covariance_0)).dot( state_weights ) ) **0.5 # @TODO
 
+	days_til_election = [100] # as.numeric(difftime(election_day,RUN_DATE))
+	expected_national_mu_b_T_error = fit_rmse_day_x(days_til_election)[0]
 
+	polling_bias_scale = 0.013 # on the probability scale -- we convert later down
+	mu_b_T_scale = expected_national_mu_b_T_error # on the probability scale -- we convert later down
+	random_walk_scale =  0.05/(300 ** 0.5) # on the probability scale -- we convert later down
 
+	# gen fake matrices, check the math (this is recreated in stan
+	ss_cov_poll_bias = state_covariance_0 * (polling_bias_scale/national_cov_matrix_error_sd*4) ** 2
+	ss_cov_mu_b_T = state_covariance_0 * (mu_b_T_scale/national_cov_matrix_error_sd*4) ** 2
+	ss_cov_mu_b_walk = state_covariance_0 * (random_walk_scale/national_cov_matrix_error_sd*4) ** 2
 
-
-
-
+	check_cov_matrix(ss_cov_poll_bias, state_weights)
 
 	return states
 
@@ -188,12 +210,10 @@ def main():
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
 
 	df = read_all_polls()
-	print(df)
-	df = read_state_context()
-	print(df)
-	df = create_cov_matrices()
+	state_weights, df = read_state_context()
+	df = create_cov_matrices(state_weights)
 
-
+#	print(fit_rmse_day_x(x))i
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
 #	state_covariance_polling_bias <- state_covariance_polling_bias * state_correlation_polling
 
