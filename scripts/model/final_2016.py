@@ -1,8 +1,12 @@
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import timedelta
 import copy
+from scipy.special import logit
 
  
 NaN = float('nan')
@@ -82,7 +86,11 @@ def read_state_context():
 	df['share_national_vote'] = df['total_count']*(1+df['adult_pop_growth_2011_15']) /sum(df['total_count']*(1+df['adult_pop_growth_2011_15']))
 
 	# set prior differences
-	prior_diff_score = {key: value for (key, value) in zip(df['state'], df['delta'])}
+	sum_share_national_vote = sum(df['share_national_vote'])
+	col_names = df['state'].tolist()
+	prior_diff_score = df['delta']
+	prior_diff_score.index = col_names
+#	prior_diff_score = {key: value for (key, value) in zip(df['state'], df['delta'])}
 	
 	# set state weights
 	sum_share_national_vote = sum(df['share_national_vote'])
@@ -93,7 +101,7 @@ def read_state_context():
 	# set electoral votes per state
 	ev_state = {key: value for (key, value) in zip(df['state'], df['ev'])}
 
-	return state_weights, df
+	return prior_diff_score, state_weights, df
 
 def create_cov_matrices(state_weights):
 	cols = ['state', 'year', 'dem']
@@ -204,14 +212,32 @@ def create_cov_matrices(state_weights):
 	return states
 
 
+def read_abramovitz_data(prior_diff_score):
+	cols = ['incvote', 'juneapp', 'q2gdp']
+	df = pd.read_csv("../../data/abramowitz_data.csv", usecols=cols)
+	
+	model = smf.ols(formula='incvote ~  juneapp + q2gdp', data = df)
+	res = model.fit()
+	print(res.summary())
+	national_mu_prior = 49.6070 + .1393 * 4 + .4480 * 1.1 # use the OLS to do this manually somehow @TODO
+#	ynewpred =  model.predict(df) # predict out of sample
+
+	# on correct scale
+	national_mu_prior = national_mu_prior / 100
+	# Mean of the mu_b_prior
+	mu_b_prior = logit(national_mu_prior + prior_diff_score)
+
+
 def main():
 	pd.set_option("display.max_rows", None, "display.max_columns", None)
 	print("Example usages below for undertanding the code: \n\n")
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
 
 	df = read_all_polls()
-	state_weights, df = read_state_context()
+	prior_diff_score, state_weights, df = read_state_context()
 	df = create_cov_matrices(state_weights)
+
+	read_abramovitz_data(prior_diff_score)
 
 #	print(fit_rmse_day_x(x))i
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
