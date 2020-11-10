@@ -212,7 +212,7 @@ def create_cov_matrices(state_weights):
 	return states
 
 
-def read_abramovitz_data(prior_diff_score):
+def read_abramovitz_data(prior_diff_score, states2012):
 	cols = ['incvote', 'juneapp', 'q2gdp']
 	df = pd.read_csv("../../data/abramowitz_data.csv", usecols=cols)
 	
@@ -227,17 +227,116 @@ def read_abramovitz_data(prior_diff_score):
 	# Mean of the mu_b_prior
 	mu_b_prior = logit(national_mu_prior + prior_diff_score)
 
+	# alpha for disconnect in state v national polls 
+#	score_among_polled = sum(states2012['all_polled_states'])
+'''	score_among_polled <- sum(states2012[all_polled_states[-1],]$obama_count)/
+	  sum(states2012[all_polled_states[-1],]$obama_count + 
+		states2012[all_polled_states[-1],]$romney_count)
+	alpha_prior <- log(states2012$national_score[1]/score_among_polled)
+'''
+
+
+def pass_data(df):
+	#@TODO need to fix the df; it's too big for some reason 
+	N_state_polls = len(df.loc[df['index_s'] != 52 ].index)
+	N_national_polls = len(df.loc[df['index_s'] == 52].index)
+
+	S = 51
+	P = len(df['pollster'].unique())
+#	M = len(df['method'].unique())
+	Pop = len(df['polltype'].unique())
+
+	state = df.loc[df['index_s'] != 52]['index_s'].tolist() 
+#	day_national = df.loc[df['index_s'] == 52]['poll_day'].tolist() 
+
+
+	n_democrat_national = df.loc[df['index_s'] == 52]['n_clinton'].tolist()
+	n_democrat_state = df.loc[df['index_s'] != 52]['n_clinton'].tolist()
+
+'''
+	T <- as.integer(round(difftime(election_day, first_day)))
+	current_T <- max(df$poll_day)
+
+	day_national <- df %>% filter(index_s == 52) %>% pull(poll_day) 
+	day_state <- df %>% filter(index_s != 52) %>% pull(poll_day) 
+	poll_national <- df %>% filter(index_s == 52) %>% pull(index_p) 
+	poll_state <- df %>% filter(index_s != 52) %>% pull(index_p) 
+	poll_mode_national <- df %>% filter(index_s == 52) %>% pull(index_m) 
+	poll_mode_state <- df %>% filter(index_s != 52) %>% pull(index_m) 
+	poll_pop_national <- df %>% filter(index_s == 52) %>% pull(index_pop) 
+	poll_pop_state <- df %>% filter(index_s != 52) %>% pull(index_pop) 
+
+	n_two_share_national <- df %>% filter(index_s == 52) %>% transmute(n_two_share = n_trump + n_clinton) %>% pull(n_two_share)
+	n_two_share_state <- df %>% filter(index_s != 52) %>% transmute(n_two_share = n_trump + n_clinton) %>% pull(n_two_share)
+	unadjusted_national <- df %>% mutate(unadjusted = ifelse(!(pollster %in% adjusters), 1, 0)) %>% filter(index_s == 52) %>% pull(unadjusted)
+	unadjusted_state <- df %>% mutate(unadjusted = ifelse(!(pollster %in% adjusters), 1, 0)) %>% filter(index_s != 52) %>% pull(unadjusted)
+	    
+
+	# priors (on the logit scale)
+	sigma_measure_noise_national = 0.04
+	sigma_measure_noise_state = 0.04
+	sigma_c = 0.06
+	sigma_m = 0.04
+	sigma_pop = 0.04
+	sigma_e_bias = 0.02
+
+
+	# putting in a dictionary to give to the pyro model
+	data = {}
+	data['N_national_polls'] = N_national_polls,
+	data["N_state_polls"] = N_state_polls,
+	data["T"] = T,
+	data["S"] = S,
+	data["P"] = P,
+	data["M"] = M,
+	data["Pop"] = Pop,
+	data["state"] = state,
+	data["state_weights"] = state_weights,
+	data["day_state"] = as.integer(day_state),
+	data["day_national"] = as.integer(day_national),
+	data["poll_state"] = poll_state,
+	data["poll_national"] = poll_national,
+	data["poll_mode_national"] = poll_mode_national, 
+	data["poll_mode_state"] = poll_mode_state,
+	data["poll_pop_national"] = poll_pop_national, 
+	data["poll_pop_state"] = poll_pop_state,
+	data["unadjusted_national"] = unadjusted_national,
+	data["unadjusted_state"] = unadjusted_state,
+	data["n_democrat_national"] = n_democrat_national,
+	data["n_democrat_state"] = n_democrat_state,
+	data["n_two_share_national"] = n_two_share_national,
+	data["n_two_share_state"] = n_two_share_state,
+	data["sigma_measure_noise_national"] = sigma_measure_noise_national,
+	data["sigma_measure_noise_state"] = sigma_measure_noise_state,
+	data["mu_b_prior"] = mu_b_prior,
+	data["sigma_c"] = sigma_c,
+	data["sigma_m"] = sigma_m,
+	data["sigma_pop"] = sigma_pop,
+	data["sigma_e_bias"] = sigma_e_bias,
+	# covariance matrices
+	# ss_cov_mu_b_walk = state_covariance_mu_b_walk,
+	# ss_cov_mu_b_T = state_covariance_mu_b_T,
+	# ss_cov_poll_bias = state_covariance_polling_bias
+	data["state_covariance_0"] = state_covariance_0,
+	data["polling_bias_scale"] = polling_bias_scale,
+	data["mu_b_T_scale"] = mu_b_T_scale,
+	data["random_walk_scale"] = random_walk_scale
+	return data
+'''
+
 
 def main():
 	pd.set_option("display.max_rows", None, "display.max_columns", None)
 	print("Example usages below for undertanding the code: \n\n")
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
 
-	df = read_all_polls()
-	prior_diff_score, state_weights, df = read_state_context()
+	read_all_polls_df = read_all_polls()
+	prior_diff_score, state_weights, states2012 = read_state_context()
 	df = create_cov_matrices(state_weights)
 
-	read_abramovitz_data(prior_diff_score)
+	read_abramovitz_data(prior_diff_score, states2012)
+
+	pass_data(read_all_polls_df)
 
 #	print(fit_rmse_day_x(x))i
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
