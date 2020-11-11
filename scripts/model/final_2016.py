@@ -413,16 +413,13 @@ def model(data):
 	with pyro.plate("raw_polling_bias-plate", size = S):
 		raw_polling_bias = pyro.sample("polling_bias", dist.Normal(0., 1.))
 
-
 	#Transformed Parameters
 	mu_b = torch.empty(S, T) #initalize mu_b
-'''
-	print(type(cholesky_ss_cov_mu_b_T))
-	print(type(raw_mu_b_T))
-	print(type(mu_b_prior))
-	mu_b[:,T] = cholesky_ss_cov_mu_b_T @ raw_mu_b_T + mu_b_prior
-	for i in range(1,T):
-		mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk @ raw_mu_b[:, T - i] + mu_b[:, T + 1 - i]
+
+#	mu_b[:,T] = cholesky_ss_cov_mu_b_T.double() @ raw_mu_b_T.double()# + mu_b_prior
+	temp = cholesky_ss_cov_mu_b_T.double() @ raw_mu_b_T.double()# + mu_b_prior
+#	for i in range(1,T):
+#		mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk @ raw_mu_b[:, T - i] + mu_b[:, T + 1 - i]
 
 	mu_c = raw_mu_c * sigma_c
 	mu_m = raw_mu_m * sigma_m
@@ -431,16 +428,25 @@ def model(data):
 
 	e_bias = torch.empty(T) #initalize e_bias
 	e_bias[1] = raw_e_bias[1] * sigma_e_bias
-	for t in range(2,T+1):
-		e_bias[t] = mu_e_bias + rho_e_bias * (e_bias[t - 1] - mu_e_bias) + raw_e_bias[t] * sigma_rho
+#	for t in range(2,T+1):
+#		e_bias[t] = mu_e_bias + rho_e_bias * (e_bias[t - 1] - mu_e_bias) + raw_e_bias[t] * sigma_rho
 
-	polling_bias = cholesky_ss_cov_poll_bias @ raw_polling_bias
+	polling_bias = cholesky_ss_cov_poll_bias.double() @ raw_polling_bias.double()
 	national_mu_b_average = mu_b.t() @ state_weights
 	national_polling_bias_average = polling_bias.T @ state_weights
 
 	logit_pi_democrat_state = torch.empty(N_state_polls)
 	logit_pi_democrat_national = torch.empty(N_national_polls)
-'''
+
+	#Likelihood Of the Model
+	#!need to verify if this is the correct implementation for binomial_logit of stan
+#	with pyro.plate("state-data-plate", size = N_state_polls):
+#		pyro.sample("n_democrat_state", dist.Binomial(n_two_share_state, logits = logit_pi_democrat_state), obs = n_democrat_state)
+
+#	with pyro.plate("national-data-plate", size = N_national_polls):
+#		pyro.sample("n_democrat_national", dist.Binomial(n_two_share_national, logits = logit_pi_democrat_national), obs = n_democrat_national)
+
+
 
 
 
