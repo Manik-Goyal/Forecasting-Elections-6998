@@ -267,8 +267,10 @@ def pass_data():
 	T = (election_day - first_day).days
 	#current_T <- max(df$poll_day)
 
-	#unadjusted_national <- df %>% mutate(unadjusted = ifelse(!(pollster %in% adjusters), 1, 0)) %>% filter(index_s == 52) %>% pull(unadjusted)
-	#unadjusted_state <- df %>% mutate(unadjusted = ifelse(!(pollster %in% adjusters), 1, 0)) %>% filter(index_s != 52) %>% pull(unadjusted)
+
+	adjusters = {"ABC", "Washington Post", "Ipsos", "Pew", "YouGov", "NBC"}
+	unadjusted_national =  [1 if x not in adjusters else 0 for x in df.loc[df['index_s'] == 52]['pollster'].tolist()]
+	unadjusted_state =  [1 if x not in adjusters else 0 for x in df.loc[df['index_s'] != 52]['pollster'].tolist()]
 
 	# priors (on the logit scale)
 	sigma_measure_noise_national = 0.04
@@ -300,8 +302,8 @@ def pass_data():
 	data["poll_mode_state"] = poll_mode_state
 	data["poll_pop_national"] = poll_pop_national
 	data["poll_pop_state"] = poll_pop_state
-#	data["unadjusted_national"] = unadjusted_national
-#	data["unadjusted_state"] = unadjusted_state
+	data["unadjusted_national"] = unadjusted_national
+	data["unadjusted_state"] = unadjusted_state
 	data["n_democrat_national"] = n_democrat_national
 	data["n_democrat_state"] = n_democrat_state
 	data["n_two_share_national"] = n_two_share_national
@@ -344,8 +346,8 @@ def model(data):
 	n_two_share_national = data["n_two_share_national"] #Total Number of Dem+Reb supporters for a particular poll
 	n_democrat_state = data["n_democrat_state"] #Number of Dem supporters in state poll for a particular poll
 	n_two_share_state = data["n_two_share_state"] #Total Number of Dem+Reb supporters for a particular poll
-#	unadjusted_national = data["unadjusted_national"] 
-#	unadjusted_state = data["unadjusted_state"] 
+	unadjusted_national = data["unadjusted_national"] 
+	unadjusted_state = data["unadjusted_state"] 
 
 	#Prior Input values
 	mu_b_prior = data["mu_b_prior"]
@@ -437,7 +439,15 @@ def model(data):
 
 	logit_pi_democrat_state = torch.empty(N_state_polls)
 	logit_pi_democrat_national = torch.empty(N_national_polls)
+'''
+	for i in range(1,N_state_polls+1):
+		logit_pi_democrat_state[i] = mu_b[state[i], day_state[i]] + mu_c[poll_state[i]] + mu_m[poll_mode_state[i]] + \
+			mu_pop[poll_pop_state[i]] + unadjusted_state[i] * e_bias[day_state[i]] + raw_measure_noise_state[i] * sigma_measure_noise_state + \
+				polling_bias[state[i]]
 
+	logit_pi_democrat_national = national_mu_b_average[day_national] +  mu_c[poll_national] + mu_m[poll_mode_national] + \
+		mu_pop[poll_pop_national] + unadjusted_national * e_bias[day_national] + raw_measure_noise_national * sigma_measure_noise_national +\
+			national_polling_bias_average
 	#Likelihood Of the Model
 	#!need to verify if this is the correct implementation for binomial_logit of stan
 #	with pyro.plate("state-data-plate", size = N_state_polls):
@@ -446,7 +456,7 @@ def model(data):
 #	with pyro.plate("national-data-plate", size = N_national_polls):
 #		pyro.sample("n_democrat_national", dist.Binomial(n_two_share_national, logits = logit_pi_democrat_national), obs = n_democrat_national)
 
-
+'''
 
 
 
