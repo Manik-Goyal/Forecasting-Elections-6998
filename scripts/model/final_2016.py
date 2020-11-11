@@ -8,6 +8,16 @@ from datetime import timedelta
 import copy
 from scipy.special import logit
 
+import torch
+from torch.distributions import constraints
+
+import pyro
+import pyro.distributions as dist
+import pyro.optim as optim
+
+from pyro.infer.mcmc.api import MCMC
+from pyro.infer.mcmc import NUTS
+
  
 NaN = float('nan')
 
@@ -33,6 +43,8 @@ def fit_rmse_day_x(x):
 	return y	
 
 def pass_data():
+	election_day = datetime.strptime("2016-11-08", "%Y-%m-%d").date()
+
 	cols = ['state', 'pollster', 'number.of.observations','population', 'mode',
 		'start.date',
 		'end.date',
@@ -72,9 +84,9 @@ def pass_data():
 	df['index_m'] = pd.Categorical(df['mode']).codes
 	df['index_pop'] = pd.Categorical(df['polltype']).codes
 
+	first_day = df['begin'].min().date()
 
 	####################################################################
-
 
 
 	dfT = pd.read_csv("../../data/2012.csv")
@@ -252,7 +264,7 @@ def pass_data():
 	n_two_share_national = df.loc[df['index_s'] == 52]['n_trump'].tolist() + n_democrat_national
 	n_two_share_state = df.loc[df['index_s'] != 52]['n_trump'].tolist() + n_democrat_state
 
-	#T <- as.integer(round(difftime(election_day, first_day)))
+	T = (election_day - first_day).days
 	#current_T <- max(df$poll_day)
 
 	#unadjusted_national <- df %>% mutate(unadjusted = ifelse(!(pollster %in% adjusters), 1, 0)) %>% filter(index_s == 52) %>% pull(unadjusted)
@@ -267,11 +279,13 @@ def pass_data():
 	sigma_e_bias = 0.02
 
 
+
+
 	# putting in a dictionary to give to the pyro model
 	data = {}
 	data['N_national_polls'] = N_national_polls
 	data["N_state_polls"] = N_state_polls
-#	data["T"] = T
+	data["T"] = T
 	data["S"] = S
 	data["P"] = P
 	data["M"] = M
@@ -309,13 +323,133 @@ def pass_data():
 	data["random_walk_scale"] = random_walk_scale
 	return data
 
+def model(data):
+	N_national_polls = data["N_national_polls"] #Number of National Polls
+	N_state_polls = data["N_state_polls"] #Number of State Polls
+	T = data["T"] #Number of days
+	S = data["S"] #Number of states for which at-least 1 poll is available
+	P = data["P"] #Number of pollsters
+	M = data["M"] #Number of poll modes
+	Pop = data["Pop"] #Number of poll populations
+	state = data["state"] #state index
+	day_state = data["day_state"] #State Day index
+	day_national = data["day_national"] #National Day index
+	poll_state = data["poll_state"] #State Pollster Index
+	poll_national = data["poll_national"] #National Pollster Index
+	poll_mode_state = data["poll_mode_state"] #State Poll Mode Index
+	poll_mode_national = data["poll_mode_national"] #National Poll Model Index
+	poll_pop_state = data["poll_pop_state"] #State poll population
+	poll_pop_national = data["poll_pop_national"] #National Poll Populaiton
+	n_democrat_national = data["n_democrat_national"] #Number of Dem supporters in national poll for a particular poll 
+	n_two_share_national = data["n_two_share_national"] #Total Number of Dem+Reb supporters for a particular poll
+	n_democrat_state = data["n_democrat_state"] #Number of Dem supporters in state poll for a particular poll
+	n_two_share_state = data["n_two_share_state"] #Total Number of Dem+Reb supporters for a particular poll
+#	unadjusted_national = data["unadjusted_national"] 
+#	unadjusted_state = data["unadjusted_state"] 
+
+	#Prior Input values
+	mu_b_prior = data["mu_b_prior"]
+	state_weights = data["state_weights"]
+	sigma_c = data["sigma_c"]
+	sigma_m = data["sigma_m"]
+	sigma_pop = data["sigma_pop"]
+	sigma_measure_noise_national = data["sigma_measure_noise_national"]
+	sigma_measure_noise_state = data["sigma_measure_noise_state"]
+	sigma_e_bias = data["sigma_e_bias"]
+
+	#Covariance Matrix and Scale Input
+	state_covariance_0 = data["state_covariance_0"]
+	random_walk_scale = data["random_walk_scale"]
+	mu_b_T_scale = data["mu_b_T_scale"]
+	polling_bias_scale = data["polling_bias_scale"]
+
+
+	#Data Transformation
+	national_cov_matrix_error_sd = torch.sqrt(torch.tensor(state_weights.T @ state_covariance_0 @ state_weights))
+
+	#Scale Covariance
+	ss_cov_poll_bias = torch.tensor((((polling_bias_scale/national_cov_matrix_error_sd)**2).item() * state_covariance_0).values)
+	ss_cov_mu_b_T = torch.tensor((((mu_b_T_scale/national_cov_matrix_error_sd)**2).item() * state_covariance_0).values)
+	ss_cov_mu_b_walk = torch.tensor((((random_walk_scale/national_cov_matrix_error_sd)**2).item() * state_covariance_0).values)
+
+	#Cholesky Transformation
+	cholesky_ss_cov_poll_bias = torch.cholesky(ss_cov_poll_bias)
+	cholesky_ss_cov_mu_b_T = torch.cholesky(ss_cov_mu_b_T)
+	cholesky_ss_cov_mu_b_walk = torch.cholesky(ss_cov_mu_b_walk)
+
+	with pyro.plate("raw_mu_b_T-plate", size = S):
+		raw_mu_b_T = pyro.sample("mu_b_T", dist.Normal(0., 1.))
+		assert raw_mu_b_T.shape == (S,)
+
+	with pyro.plate("raw_mu_b_x-asis", size = S):
+		with pyro.plate("raw_mu_b_y-plate", size = T):
+			raw_mu_b = pyro.sample("mu_b_T", dist.Normal(0., 1.)) 
+			raw_mu_b.t().flatten() #Matrix to Column Order Vector
+
+	with pyro.plate("raw_mu_c-plate", size = P):
+		raw_mu_c = pyro.sample("raw_mu_c", dist.Normal(0., 1.))
+
+	with pyro.plate("raw_mu_m-plate", size = M):
+		raw_mu_m = pyro.sample("mu_m", dist.Normal(0., 1.))
+
+	with pyro.plate("raw_mu_pop-plate", size = Pop):
+		raw_mu_pop = pyro.sample("raw_mu_pop", dist.Normal(0., 1.))
+
+	#!Not sure if this satisfies Offset=0 and multiplier=0.02
+	mu_e_bias = pyro.sample("mu_e_bias", dist.Normal(0., 0.02))*0.02 
+
+	#!Need to find way to add constraint lower = 0, upper = 1
+	rho_e_bias = pyro.sample("rho_e_bias", dist.Normal(0.7, 0.1)) 
+
+	with pyro.plate("raw_e_bias-plate", size = T):
+		raw_e_bias = pyro.sample("raw_e_bias", dist.Normal(0., 1.))
+
+	with pyro.plate("raw_measure_noise_national-plate", size = N_national_polls):
+		raw_measure_noise_national = pyro.sample("measure_noise_national", dist.Normal(0., 1.))
+
+	with pyro.plate("raw_measure_noise_state-plate", size = N_state_polls):
+		raw_measure_noise_state = pyro.sample("measure_noise_state", dist.Normal(0., 1.))
+
+	with pyro.plate("raw_polling_bias-plate", size = S):
+		raw_polling_bias = pyro.sample("polling_bias", dist.Normal(0., 1.))
+
+
+	#Transformed Parameters
+	mu_b = torch.empty(S, T) #initalize mu_b
+'''
+	print(type(cholesky_ss_cov_mu_b_T))
+	print(type(raw_mu_b_T))
+	print(type(mu_b_prior))
+	mu_b[:,T] = cholesky_ss_cov_mu_b_T @ raw_mu_b_T + mu_b_prior
+	for i in range(1,T):
+		mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk @ raw_mu_b[:, T - i] + mu_b[:, T + 1 - i]
+
+	mu_c = raw_mu_c * sigma_c
+	mu_m = raw_mu_m * sigma_m
+	mu_pop = raw_mu_pop * sigma_pop
+	sigma_rho = torch.sqrt(1-(rho_e_bias)**2) * sigma_e_bias
+
+	e_bias = torch.empty(T) #initalize e_bias
+	e_bias[1] = raw_e_bias[1] * sigma_e_bias
+	for t in range(2,T+1):
+		e_bias[t] = mu_e_bias + rho_e_bias * (e_bias[t - 1] - mu_e_bias) + raw_e_bias[t] * sigma_rho
+
+	polling_bias = cholesky_ss_cov_poll_bias @ raw_polling_bias
+	national_mu_b_average = mu_b.t() @ state_weights
+	national_polling_bias_average = polling_bias.T @ state_weights
+
+	logit_pi_democrat_state = torch.empty(N_state_polls)
+	logit_pi_democrat_national = torch.empty(N_national_polls)
+'''
+
+
 
 def main():
 	pd.set_option("display.max_rows", None, "display.max_columns", None)
 	print("Example usages below for undertanding the code: \n\n")
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
 	data = pass_data()
-
+	model(data)
 #	print(fit_rmse_day_x(x))i
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
 #	state_covariance_polling_bias <- state_covariance_polling_bias * state_correlation_polling
