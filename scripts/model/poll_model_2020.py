@@ -6,12 +6,13 @@ import pyro
 import pyro.distributions as dist
 import pyro.optim as optim
 
-from pyro.infer.mcmc.api import MCMC
-from pyro.infer.mcmc import NUTS
+from pyro.infer import MCMC, NUTS, Predictive
+from scipy.special import expit
 
-
-def model(data):
+def model(data, polls):
     #data from data dictionary
+
+    #X
     N_national_polls = data["N_national_polls"] #Number of National Polls
     N_state_polls = data["N_state_polls"] #Number of State Polls
     T = data["T"] #Number of days
@@ -28,12 +29,18 @@ def model(data):
     poll_mode_national = data["poll_mode_national"] #National Poll Model Index
     poll_pop_state = data["poll_pop_state"] #State poll population
     poll_pop_national = data["poll_pop_national"] #National Poll Populaiton
-    n_democrat_national = data["n_democrat_national"] #Number of Dem supporters in national poll for a particular poll 
-    n_two_share_national = data["n_two_share_national"] #Total Number of Dem+Reb supporters for a particular poll
-    n_democrat_state = data["n_democrat_state"] #Number of Dem supporters in state poll for a particular poll
-    n_two_share_state = data["n_two_share_state"] #Total Number of Dem+Reb supporters for a particular poll
     unadjusted_national = data["unadjusted_national"] 
     unadjusted_state = data["unadjusted_state"] 
+    n_two_share_national = data["n_two_share_national"] #Total Number of Dem+Reb supporters for a particular poll
+    n_two_share_state = data["n_two_share_state"] #Total Number of Dem+Reb supporters for a particular poll
+    
+    #y
+    if polls is not None:
+        n_democrat_national = polls["n_democrat_national"] #Number of Dem supporters in national poll for a particular poll 
+        n_democrat_state = polls["n_democrat_state"] #Number of Dem supporters in state poll for a particular poll
+    else:
+        n_democrat_national = None
+        n_democrat_state = None
     
     #Prior Input values
     mu_b_prior = data["mu_b_prior"]
@@ -103,36 +110,36 @@ def model(data):
         raw_polling_bias = pyro.sample("polling_bias", dist.Normal(0., 1.))
 
     #Transformed Parameters
-    mu_b = torch.empty(S, T) #initalize mu_b
+    mu_b = pyro.param('mu_b', torch.empty(S, T)) #initalize mu_b
     mu_b[:,T] = cholesky_ss_cov_mu_b_T @ raw_mu_b_T + mu_b_prior
     for i in range(1,T):
         mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk @ raw_mu_b[:, T - i] + mu_b[:, T + 1 - i]
     
-    mu_c = raw_mu_c * sigma_c
-    mu_m = raw_mu_m * sigma_m
-    mu_pop = raw_mu_pop * sigma_pop
-    sigma_rho = torch.sqrt(1-(rho_e_bias)**2) * sigma_e_bias
+    mu_c = pyro.param('mu_c', raw_mu_c * sigma_c)
+    mu_m = pyro.param('mu_m', raw_mu_m * sigma_m)
+    mu_pop = pyro.param('mu_pop', raw_mu_pop * sigma_pop)
+    sigma_rho = pyro.param('sigma_rho', torch.sqrt(1-(rho_e_bias)**2) * sigma_e_bias)
 
-    e_bias = torch.empty(T) #initalize e_bias
+    e_bias = pyro.param('e_bias', torch.empty(T)) #initalize e_bias
     e_bias[1] = raw_e_bias[1] * sigma_e_bias
     for t in range(2,T+1):
         e_bias[t] = mu_e_bias + rho_e_bias * (e_bias[t - 1] - mu_e_bias) + raw_e_bias[t] * sigma_rho
 
-    polling_bias = cholesky_ss_cov_poll_bias @ raw_polling_bias
-    national_mu_b_average = mu_b.t() @ state_weights
-    national_polling_bias_average = polling_bias.T @ state_weights
+    polling_bias = pyro.param('polling_bias', cholesky_ss_cov_poll_bias @ raw_polling_bias)
+    national_mu_b_average = pyro.param('national_mu_b_average', mu_b.t() @ state_weights)
+    national_polling_bias_average = pyro.param('national_polling_bias_average', polling_bias.T @ state_weights)
 
-    logit_pi_democrat_state = torch.empty(N_state_polls)
-    logit_pi_democrat_national = torch.empty(N_national_polls)
+    logit_pi_democrat_state = pyro.param('logit_pi_democrat_state', torch.empty(N_state_polls))
+    logit_pi_democrat_national = pyro.param('logit_pi_democrat_national', torch.empty(N_national_polls))
 
     for i in range(1,N_state_polls+1):
         logit_pi_democrat_state[i] = mu_b[state[i], day_state[i]] + mu_c[poll_state[i]] + mu_m[poll_mode_state[i]] + \
             mu_pop[poll_pop_state[i]] + unadjusted_state[i] * e_bias[day_state[i]] + raw_measure_noise_state[i] * sigma_measure_noise_state + \
             polling_bias[state[i]]
   
-        logit_pi_democrat_national = national_mu_b_average[day_national] +  mu_c[poll_national] + mu_m[poll_mode_national] + \
-            mu_pop[poll_pop_national] + unadjusted_national * e_bias[day_national] + raw_measure_noise_national * sigma_measure_noise_national +\
-            national_polling_bias_average
+    logit_pi_democrat_national = national_mu_b_average[day_national] +  mu_c[poll_national] + mu_m[poll_mode_national] + \
+        mu_pop[poll_pop_national] + unadjusted_national * e_bias[day_national] + raw_measure_noise_national * sigma_measure_noise_national +\
+        national_polling_bias_average
     
     #Likelihood Of the Model
     #!need to verify if this is the correct implementation for binomial_logit of stan
@@ -144,11 +151,35 @@ def model(data):
 
 
 #!Need to modify this based on hyper-parameters used by the Original Model
-def Inference_MCMC(model, data, n_samples = 500, n_warmup = 500, n_chains = 6):
+def Inference_MCMC(model, data, polls, n_samples = 500, n_warmup = 500, n_chains = 6):
     nuts_kernel = NUTS(model)
     mcmc = MCMC(nuts_kernel, num_samples = n_samples, warmup_steps = n_warmup, num_chains = n_chains)
-    mcmc.run(data)
+    mcmc.run(data, polls)
+    posterior_samples = mcmc.get_samples()
 
     hmc_samples = {k: v.detach().cpu().numpy() for k, v in mcmc.get_samples().items()}
 
-    return hmc_samples
+    return posterior_samples, hmc_samples
+
+#Generate samples from posterior predictive distribution
+def sample_posterior_predictive(model, posterior_samples, n_samples, data):
+    posterior_predictive = Predictive(model, posterior_samples, num_samples = n_samples)
+    posterior_predictive_samples = posterior_predictive.get_samples(data, None)
+
+    return posterior_predictive_samples
+
+#Generating Quantity from posterior sample
+def predicted_score(model, posterior_samples, data):
+    T = data['T']
+    S = data['S']
+    predicted = torch.empty(T, S)
+    posterior_predictive = Predictive(model, posterior_samples)
+    trace  = posterior_predictive.get_vectorized_trace(data)
+
+    mu_b = trace.nodes['mu_b']
+    for s in range(1,S+1):
+        predicted[:,s] = expit(mu_b[s,:].t().flatten())
+
+    return predicted
+
+
