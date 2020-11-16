@@ -7,6 +7,7 @@ from datetime import datetime
 from datetime import timedelta
 import copy
 from scipy.special import logit
+from scipy.special import expit
 
 import torch
 from torch.distributions import constraints
@@ -15,8 +16,13 @@ import pyro
 import pyro.distributions as dist
 import pyro.optim as optim
 
-from pyro.infer.mcmc.api import MCMC
-from pyro.infer.mcmc import NUTS
+from pyro.infer import MCMC, NUTS, Predictive
+
+import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+from matplotlib import pyplot
+
 
  
 NaN = float('nan')
@@ -381,12 +387,15 @@ def model(data):
 
 	with pyro.plate("raw_mu_b_T-plate", size = S):
 		raw_mu_b_T = pyro.sample("mu_b_T", dist.Normal(0., 1.))
-		assert raw_mu_b_T.shape == (S,)
+		if raw_mu_b_T.shape != (S,):
+			print(raw_mu_b_T)
+#		assert raw_mu_b_T.shape == (S,)
 
 	with pyro.plate("raw_mu_b_x-asis", size = S):
 		with pyro.plate("raw_mu_b_y-plate", size = T):
-			raw_mu_b = pyro.sample("mu_b_T", dist.Normal(0., 1.)) 
-			raw_mu_b.t().flatten() #Matrix to Column Order Vector
+			raw_mu_b = pyro.sample("mu_b_b", dist.Normal(0., 1.)) 
+#			raw_mu_b.t().flatten() #Matrix to Column Order Vector
+			raw_mu_b.transpose(0,1).flatten()
 
 	with pyro.plate("raw_mu_c-plate", size = P):
 		raw_mu_c = pyro.sample("raw_mu_c", dist.Normal(0., 1.))
@@ -419,7 +428,7 @@ def model(data):
 	mu_b = torch.empty(S, T) #initalize mu_b
 
 #	mu_b[:,T] = cholesky_ss_cov_mu_b_T.double() @ raw_mu_b_T.double()# + mu_b_prior
-	temp = cholesky_ss_cov_mu_b_T.double() @ raw_mu_b_T.double()# + mu_b_prior
+#	temp = cholesky_ss_cov_mu_b_T.double() @ raw_mu_b_T.double()# + mu_b_prior
 #	for i in range(1,T):
 #		mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk @ raw_mu_b[:, T - i] + mu_b[:, T + 1 - i]
 
@@ -429,13 +438,13 @@ def model(data):
 	sigma_rho = torch.sqrt(1-(rho_e_bias)**2) * sigma_e_bias
 
 	e_bias = torch.empty(T) #initalize e_bias
-	e_bias[1] = raw_e_bias[1] * sigma_e_bias
+#	e_bias[1] = raw_e_bias[1] * sigma_e_bias
 #	for t in range(2,T+1):
 #		e_bias[t] = mu_e_bias + rho_e_bias * (e_bias[t - 1] - mu_e_bias) + raw_e_bias[t] * sigma_rho
 
-	polling_bias = cholesky_ss_cov_poll_bias.double() @ raw_polling_bias.double()
+#	polling_bias = cholesky_ss_cov_poll_bias.double() @ raw_polling_bias.double()
 	national_mu_b_average = mu_b.t() @ state_weights
-	national_polling_bias_average = polling_bias.T @ state_weights
+#	national_polling_bias_average = polling_bias.T @ state_weights
 
 	logit_pi_democrat_state = torch.empty(N_state_polls)
 	logit_pi_democrat_national = torch.empty(N_national_polls)
@@ -458,7 +467,72 @@ def model(data):
 
 '''
 
+#!Need to modify this based on hyper-parameters used by the Original Model
+def Inference_MCMC(model, data, n_samples = 50, n_warmup = 50, n_chains = 1):
+	nuts_kernel = NUTS(model)
+	mcmc = MCMC(nuts_kernel, num_samples = n_samples, warmup_steps = n_warmup, num_chains = n_chains)
+	mcmc.run(data)
+	posterior_samples = mcmc.get_samples()
 
+	print(posterior_samples.keys())
+
+	X = posterior_samples["mu_b_T"].t()
+	print('Length: ', len(X), '\n\n')
+	
+	X_1 = [x[1].item() for x in X]
+
+	plt.hist(X_1, bins='auto', edgecolor='black', linewidth=0.75)
+	plt.title("mu_b_T")
+	plt.show()
+
+	hmc_samples = {k: v.detach().cpu().numpy() for k, v in mcmc.get_samples().items()}
+
+	return posterior_samples, hmc_samples
+
+#Generate samples from posterior predictive distribution
+def sample_posterior_predictive(model, posterior_samples, n_samples, data):
+	print("checkpoint A")
+	posterior_predictive = Predictive(model, posterior_samples, num_samples = n_samples)
+	print("checkpoint B")
+	print(type(posterior_predictive))
+	posterior_predictive_samples = posterior_predictive.get_samples(data)
+	print("checkpoint C")
+
+	return posterior_predictive_samples
+
+#Generating Quantity from posterior sample
+def predicted_score(model, posterior_samples, data):
+	print("checkpoint E")
+	T = data['T']
+	print("T: ", T)
+	print("checkpoint F")
+	S = data['S']
+	print("S: ",S)
+	print("checkpoint G")
+	print("checkpoint H")
+	posterior_predictive = Predictive(model, posterior_samples)
+	print("checkpoint I")
+	trace  = posterior_predictive.get_vectorized_trace(data)
+	print("checkpoint J")
+
+#	print(trace.nodes)
+	mu_b = trace.nodes['mu_b_T']['value']
+#	S = len(mu_b)
+	predicted = torch.empty(S, T)
+	print(mu_b[0])
+	print("checkpoint K")
+	print(mu_b[0,:].t().flatten())
+	print("checkpoint L")
+	print(expit(mu_b[0,:].t().flatten()))
+	print("checkpoint M")
+	print(predicted[:,0])
+#	print("Mu_b: ", mu_b.keys())
+#	for s in range(1,S+1):
+	for s in range(0,S-2):
+		print(s)
+		predicted[:,s] = expit(mu_b[s,:].t().flatten())
+
+	return predicted
 
 def main():
 	pd.set_option("display.max_rows", None, "display.max_columns", None)
@@ -466,6 +540,13 @@ def main():
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
 	data = pass_data()
 	model(data)
+	posterior_samples, hmc_samples = Inference_MCMC(model, data)
+#	print('1.\n\n', posterior_samples, '\n2.\n\n', hmc_samples)
+	posterior_predictive_samples = sample_posterior_predictive(model, posterior_samples, 50, data)
+#	print('\n\n3a\n\n',posterior_predictive_samples)
+#	print('\n\n3b\n\n', type(posterior_predictive_samples))
+	predicted = predicted_score(model, posterior_samples, data)
+	print('\n\n4\n\n', predicted)
 #	print(fit_rmse_day_x(x))i
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
 #	state_covariance_polling_bias <- state_covariance_polling_bias * state_correlation_polling
