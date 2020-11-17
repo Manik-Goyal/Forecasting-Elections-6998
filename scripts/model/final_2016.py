@@ -264,6 +264,7 @@ def pass_data():
 	poll_pop_state = df.loc[df['index_s'] == 52]['index_pop'].tolist()
 
 
+	# What we will end up trying to predict
 	n_democrat_national = df.loc[df['index_s'] == 52]['n_clinton'].tolist()
 	n_democrat_state = df.loc[df['index_s'] != 52]['n_clinton'].tolist()
 
@@ -291,6 +292,7 @@ def pass_data():
 
 	# putting in a dictionary to give to the pyro model
 	data = {}
+	polls = {}
 	data['N_national_polls'] = N_national_polls
 	data["N_state_polls"] = N_state_polls
 	data["T"] = T
@@ -310,8 +312,8 @@ def pass_data():
 	data["poll_pop_state"] = poll_pop_state
 	data["unadjusted_national"] = unadjusted_national
 	data["unadjusted_state"] = unadjusted_state
-	data["n_democrat_national"] = n_democrat_national
-	data["n_democrat_state"] = n_democrat_state
+	polls["n_democrat_national"] = n_democrat_national
+	polls["n_democrat_state"] = n_democrat_state
 	data["n_two_share_national"] = n_two_share_national
 	data["n_two_share_state"] = n_two_share_state
 	data["sigma_measure_noise_national"] = sigma_measure_noise_national
@@ -329,7 +331,7 @@ def pass_data():
 	data["polling_bias_scale"] = polling_bias_scale
 	data["mu_b_T_scale"] = mu_b_T_scale
 	data["random_walk_scale"] = random_walk_scale
-	return data
+	return data, polls
 
 def model(data):
 	N_national_polls = data["N_national_polls"] #Number of National Polls
@@ -538,15 +540,15 @@ def main():
 	pd.set_option("display.max_rows", None, "display.max_columns", None)
 	print("Example usages below for undertanding the code: \n\n")
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
-	data = pass_data()
-	model(data)
-	posterior_samples, hmc_samples = Inference_MCMC(model, data)
+	data, polls = pass_data()
+#	model(data, polls)
+#	posterior_samples, hmc_samples = Inference_MCMC(model, data)
 #	print('1.\n\n', posterior_samples, '\n2.\n\n', hmc_samples)
-	posterior_predictive_samples = sample_posterior_predictive(model, posterior_samples, 50, data)
+#	posterior_predictive_samples = sample_posterior_predictive(model, posterior_samples, 50, data)
 #	print('\n\n3a\n\n',posterior_predictive_samples)
 #	print('\n\n3b\n\n', type(posterior_predictive_samples))
-	predicted = predicted_score(model, posterior_samples, data)
-	print('\n\n4\n\n', predicted)
+#	predicted = predicted_score(model, posterior_samples, data)
+#	print('\n\n4\n\n', predicted)
 #	print(fit_rmse_day_x(x))i
 #	state_covariance_polling_bias = cov_matrix(51, 0.078^2, 0.9) # 3.4% on elec day
 #	state_covariance_polling_bias <- state_covariance_polling_bias * state_correlation_polling
