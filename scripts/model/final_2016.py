@@ -162,7 +162,6 @@ def pass_data():
 
 	indices = list(states.index.values)
 	mins, maxes = states.min(axis=1).tolist(), states.max(axis=1).tolist()
-	print(indices, mins)
 	for i in range(len(indices)):
 		states.iloc[i] = (states.iloc[i] - mins[i]) / (maxes[i] - mins[i])
 
@@ -234,8 +233,9 @@ def pass_data():
 	model = smf.ols(formula='incvote ~  juneapp + q2gdp', data = dfTemp) 
 	res = model.fit()
 	print(res.summary())
-	national_mu_prior = 49.6070 + .1393 * 4 + .4480 * 1.1 # use the OLS to do this manually somehow @TODO
-	#       ynewpred =  model.predict(df) # predict out of sample
+	coefs = res.params
+	national_mu_prior =  coefs["Intercept"] + coefs["juneapp"] * 4 + coefs["q2gdp"] * 1.1	
+	#national_mu_prior = 49.6070 + .1393 * 4 + .4480 * 1.1 # use the OLS to do this manually somehow @TODO
 
 	# on correct scale
 	national_mu_prior = national_mu_prior / 100 
@@ -331,7 +331,7 @@ def pass_data():
 	data["polling_bias_scale"] = polling_bias_scale
 	data["mu_b_T_scale"] = mu_b_T_scale
 	data["random_walk_scale"] = random_walk_scale
-	return data, polls
+	return data, polls, res, dfTemp
 
 def main():
 	pd.set_option("display.max_rows", None, "display.max_columns", None)
