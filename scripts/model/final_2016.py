@@ -265,11 +265,11 @@ def pass_data():
 
 
 	# What we will end up trying to predict
-	n_democrat_national = df.loc[df['index_s'] == 52]['n_clinton'].tolist()
-	n_democrat_state = df.loc[df['index_s'] != 52]['n_clinton'].tolist()
+	n_democrat_national = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] == 52]['n_clinton'].tolist()]
+	n_democrat_state = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] != 52]['n_clinton'].tolist()]
 
-	n_republic_national = df.loc[df['index_s'] == 52]['n_trump'].tolist()
-	n_republic_state = df.loc[df['index_s'] != 52]['n_trump'].tolist()
+	n_republic_national = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] == 52]['n_trump'].tolist()]
+	n_republic_state = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] != 52]['n_trump'].tolist()]
 
 	n_two_share_national = [dem + rep for dem, rep in zip(n_democrat_national, n_republic_national)]
 	n_two_share_state = [dem + rep for dem, rep in zip(n_democrat_state, n_republic_state)]
@@ -334,13 +334,49 @@ def pass_data():
 	data["polling_bias_scale"] = polling_bias_scale
 	data["mu_b_T_scale"] = mu_b_T_scale
 	data["random_walk_scale"] = random_walk_scale
+
+
+	print(polls["n_democrat_national"])
 	return data, polls, res, dfTemp
 
 def main():
 	pd.set_option("display.max_rows", None, "display.max_columns", None)
 	print("Example usages below for undertanding the code: \n\n")
 	print("Using cov_matrix(6, .75, .95): \n", cov_matrix(6, 0.75, 0.95), '\n\n')
+	pass_data()
 
 if __name__ == "__main__":
 	main()
+
+
+'''
+  filter(t >= start_date & !is.na(t)
+         & (population == "Likely Voters" | 
+              population == "Registered Voters" | 
+              population == "Adults") # get rid of disaggregated polls
+         & n > 1) 
+'''
+
+'''
+
+# mode mutations
+df <- df %>% 
+  mutate(mode = case_when(mode == 'Internet' ~ 'Online poll',
+                          grepl("live phone",tolower(mode)) ~ 'Live phone component',
+                          TRUE ~ 'Other'))
+
+'''
+
+
+'''
+Reduce matrix
+	--> weekly polls? 
+	--> or just do less days
+
+'''
+
+
+
+
+
 
