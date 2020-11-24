@@ -335,8 +335,6 @@ def pass_data():
 	data["mu_b_T_scale"] = mu_b_T_scale
 	data["random_walk_scale"] = random_walk_scale
 
-
-	print(polls["n_democrat_national"])
 	return data, polls, res, dfTemp
 
 def main():
