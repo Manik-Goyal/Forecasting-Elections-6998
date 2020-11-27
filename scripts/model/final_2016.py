@@ -1,3 +1,4 @@
+from makepsd import nearestPD
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -49,8 +50,9 @@ def fit_rmse_day_x(x):
 	return y	
 
 def pass_data():
-	ind_list = ["CA", "DC", "NY", "WY"]
+#	ind_list = ["MI","OH"]
 	election_day = datetime.strptime("2016-11-08", "%Y-%m-%d").date()
+	start_date = datetime.strptime("2016-03-01", "%Y-%m-%d").date()
 
 	cols = ['state', 'pollster', 'number.of.observations','population', 'mode',
 		'start.date',
@@ -64,6 +66,11 @@ def pass_data():
 	df['begin'] = [datetime.strptime(x, "%Y-%m-%d") for x in df['start.date']]
 	df['end'] = [datetime.strptime(x, "%Y-%m-%d") for x in df['end.date']]
 	df['t'] = [(y - (timedelta(days=1) + (y - x) // 2) ).date() for x,y in zip(df['begin'], df['end'])]
+	
+	df = df[(df['t'] > start_date) & (df['t'] != NaN) & (df['n'] > 1)]
+	df = df[(df['polltype'] == "Likely Voters") | (df['polltype'] == "Registered Voters") | (df['polltype'] == "Adults") ]
+
+	print("Df length: ", len(df))
 
 	# Matching equivalent names due to data inconsistencies
 	df = df.replace("Fox News", "FOX")
@@ -74,18 +81,33 @@ def pass_data():
 	df['undecided'] = df['undecided'].replace(NaN, 0)
 	df['other'] = df['other'].replace(NaN, 0) + df['johnson'].replace(NaN, 0) + df['mcmullin'].replace(NaN, 0)
 
+	# Mode Mutations
+#	for i in df["polltype"].index:
+#		print(i)
+#		if df["polltype"][i] == "Internet":
+#			df.loc["polltype", i] = "Online poll"
+#		elif "live phone" in df["polltype"][i].lower():
+#			df.loc["polltype",i] = "Live phone component"
+#		else:
+#			df.loc["polltype",i] = "Other"
+			
+	
+
 	# Vote shares etc
 	df['two_party_sum'] = df['clinton'] + df['trump']
 	df['n_clinton'] = round(df['n'] * df['clinton'] / 100)
 	df['pct_clinton'] = df['clinton'] / df['two_party_sum']
 	df['n_trump'] = round(df['n'] * df['trump'] / 100)
 	df['pct_trump'] = df['trump'] / df['two_party_sum']
-
 	# KEEPING CERTAIN STATES ONLY
-	df = df.loc[df['state'].isin(ind_list)]
+#	df = df.loc[df['state'].isin(ind_list)]
+
+	df = df.sort_values(['state','t', 'polltype', 'two_party_sum'])
+	df = df.drop_duplicates(subset=['state','t','pollster'])
+
 	# Numerical Indices
 	df['index_s'] = pd.Categorical(df['state']).codes
-	df['index_s'] = df['index_s'].replace(0, 52)
+	df['index_s'] = df['index_s'].replace(0, 51)
 
 	min_T = df['t'].min()
 	df['index_t'] = [(timedelta(days=1)  + x - min_T).days for x in df['t']]
@@ -93,8 +115,10 @@ def pass_data():
 	df['index_m'] = pd.Categorical(df['mode']).codes
 	df['index_pop'] = pd.Categorical(df['polltype']).codes
 
-	print(df)
+	print(df['mode'].unique())
 	first_day = df['begin'].min().date()
+	print(df['index_m'].unique())
+	print(df['index_pop'].unique())
 
 	####################################################################
 
@@ -171,28 +195,19 @@ def pass_data():
 
 
 	# Our covariance matrix for the data we have transformed        
-	cov = states.cov().loc[ind_list][ind_list]
+	cov = states.corr()
 	cov[cov < 0 ] = 0
-	print(cov)
-
-
+	cov = cov.to_numpy()
+	cov = nearestPD(cov)
+	cov = pd.DataFrame(data = cov, index=state_abbrv, columns=state_abbrv)
 	temp_cov = copy.deepcopy(cov)
 	np.fill_diagonal(temp_cov.values, float('NaN'))
 
-
-
 	lamda = 0.75
-	arr = pd.DataFrame(data=np.ones((len(ind_list),len(ind_list))))
+	arr = pd.DataFrame(data=np.ones((51,51)), index=state_abbrv, columns=state_abbrv)
 	a = 1
-
 	state_correlation_polling = lamda * cov + (1 - lamda) * arr
-	df1 = lamda * cov
-	df2 = (1 - lamda) * arr
-	df2.columns = df1.columns
-	df2.index = df1.index
-	state_correlation_polling = df1.add(df2)
-
-
+	ind_list = state_abbrv
 
 	# covariance matrix for polling error
 	state_covariance_polling_bias =  pd.DataFrame(data=cov_matrix(len(ind_list), 0.078**2, 0.9), columns = ind_list, index=ind_list)
@@ -237,7 +252,6 @@ def pass_data():
 
 	cols = ['incvote', 'juneapp', 'q2gdp']
 	dfTemp = pd.read_csv("../../data/abramowitz_data.csv", usecols=cols)
-	print(dfTemp)
 
 	model = smf.ols(formula='incvote ~  juneapp + q2gdp', data = dfTemp) 
 	res = model.fit()
@@ -254,32 +268,31 @@ def pass_data():
 
 
 	#@TODO need to fix the df; it's too big for some reason 
-	N_state_polls = len(df.loc[df['index_s'] != 52 ].index)
-	N_national_polls = len(df.loc[df['index_s'] == 52].index)
+	N_state_polls = len(df.loc[df['index_s'] != 51].index)
+	N_national_polls = len(df.loc[df['index_s'] == 51].index)
 
 	S = len(ind_list)
 	P = len(df['pollster'].unique())
 	M = len(df['mode'].unique()) #@TODO switch to 'method' and do mutation
 	Pop = len(df['polltype'].unique())
 
-	state = df.loc[df['index_s'] != 52]['index_s'].tolist() 
-	print("state:", len(state))
-	day_national = df.loc[df['index_s'] == 52]['index_t'].tolist() 
-	day_state = df.loc[df['index_s'] != 52]['index_t'].tolist()
-	poll_national = df.loc[df['index_s'] == 52]['index_p'].tolist()
-	poll_state = df.loc[df['index_s'] != 52]['index_p'].tolist()
-	poll_mode_national = df.loc[df['index_s'] == 52]['index_m'].tolist()
-	poll_mode_state = df.loc[df['index_s'] != 52]['index_m'].tolist()
-	poll_pop_national = df.loc[df['index_s'] == 52]['index_pop'].tolist()
-	poll_pop_state = df.loc[df['index_s'] != 52]['index_pop'].tolist()
+	state = df.loc[df['index_s'] != 51]['index_s'].tolist() 
+	day_national = df.loc[df['index_s'] == 51]['index_t'].tolist() 
+	day_state = df.loc[df['index_s'] != 51]['index_t'].tolist()
+	poll_national = df.loc[df['index_s'] == 51]['index_p'].tolist()
+	poll_state = df.loc[df['index_s'] != 51]['index_p'].tolist()
+	poll_mode_national = df.loc[df['index_s'] == 51]['index_m'].tolist()
+	poll_mode_state = df.loc[df['index_s'] != 51]['index_m'].tolist()
+	poll_pop_national = df.loc[df['index_s'] == 51]['index_pop'].tolist()
+	poll_pop_state = df.loc[df['index_s'] != 51]['index_pop'].tolist()
 
 
 	# What we will end up trying to predict
-	n_democrat_national = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] == 52]['n_clinton'].tolist()]
-	n_democrat_state = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] != 52]['n_clinton'].tolist()]
+	n_democrat_national = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] == 51]['n_clinton'].tolist()]
+	n_democrat_state = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] != 51]['n_clinton'].tolist()]
 
-	n_republic_national = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] == 52]['n_trump'].tolist()]
-	n_republic_state = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] != 52]['n_trump'].tolist()]
+	n_republic_national = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] == 51]['n_trump'].tolist()]
+	n_republic_state = [0 if np.isnan(x) else x for x in df.loc[df['index_s'] != 51]['n_trump'].tolist()]
 
 	n_two_share_national = [dem + rep for dem, rep in zip(n_democrat_national, n_republic_national)]
 	n_two_share_state = [dem + rep for dem, rep in zip(n_democrat_state, n_republic_state)]
@@ -289,8 +302,8 @@ def pass_data():
 
 
 	adjusters = {"ABC", "Washington Post", "Ipsos", "Pew", "YouGov", "NBC"}
-	unadjusted_national =  [1 if x not in adjusters else 0 for x in df.loc[df['index_s'] == 52]['pollster'].tolist()]
-	unadjusted_state =  [1 if x not in adjusters else 0 for x in df.loc[df['index_s'] != 52]['pollster'].tolist()]
+	unadjusted_national =  [1 if x not in adjusters else 0 for x in df.loc[df['index_s'] == 51]['pollster'].tolist()]
+	unadjusted_state =  [1 if x not in adjusters else 0 for x in df.loc[df['index_s'] != 51]['pollster'].tolist()]
 
 	# priors (on the logit scale)
 	sigma_measure_noise_national = 0.04
@@ -346,8 +359,11 @@ def pass_data():
 	data["random_walk_scale"] = random_walk_scale
 
 	data["mu_b_prior"] = data["mu_b_prior"].loc[ind_list]
-	print(data["state_covariance_0"])
-	print(S)
+
+#	print(df['polltype'])
+#	cols = ["state", "pred"]
+#	df = pd.read_csv("../../data/state_priors_08_12_16.csv", usecols=cols)
+	print(data["N_national_polls"])
 	return data, polls, res, dfTemp
 
 def main():
@@ -361,33 +377,10 @@ if __name__ == "__main__":
 
 
 '''
-  filter(t >= start_date & !is.na(t)
-         & (population == "Likely Voters" | 
-              population == "Registered Voters" | 
-              population == "Adults") # get rid of disaggregated polls
-         & n > 1) 
-'''
-
-'''
-
-# mode mutations
-df <- df %>% 
-  mutate(mode = case_when(mode == 'Internet' ~ 'Online poll',
-                          grepl("live phone",tolower(mode)) ~ 'Live phone component',
-                          TRUE ~ 'Other'))
-
-'''
-
-
-'''
 Reduce matrix
 	--> weekly polls? 
 	--> or just do less days
 
 '''
-
-
-
-
 
 
