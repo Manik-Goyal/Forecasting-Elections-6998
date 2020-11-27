@@ -126,7 +126,7 @@ def pass_data():
     # set state weights
     sum_share_national_vote = sum(dfT['share_national_vote'])
     col_names = dfT['state'].tolist()
-    state_weights = dfT['ev'] / sum_share_national_vote
+    state_weights = dfT['share_national_vote'] / sum_share_national_vote
     state_weights.index = col_names
 
     # set electoral votes per state
@@ -235,7 +235,7 @@ def pass_data():
     national_cov_matrix_error_sd = ((state_weights.transpose().dot(
                                      state_covariance_0)).dot(
                                      state_weights)) ** 0.5
-
+    print(state_weights)
     print(national_cov_matrix_error_sd)
     days_til_election = [100]
     expected_national_mu_b_T_error = fit_rmse_day_x(days_til_election)[0]
@@ -343,10 +343,6 @@ def pass_data():
     data["sigma_m"] = sigma_m
     data["sigma_pop"] = sigma_pop
     data["sigma_e_bias"] = sigma_e_bias
-    # covariance matrices
-    # ss_cov_mu_b_walk = state_covariance_mu_b_walk,
-    # ss_cov_mu_b_T = state_covariance_mu_b_T,
-    # ss_cov_poll_bias = state_covariance_polling_bias
     data["state_covariance_0"] = state_covariance_0.to_numpy()
     data["polling_bias_scale"] = polling_bias_scale
     data["mu_b_T_scale"] = mu_b_T_scale
