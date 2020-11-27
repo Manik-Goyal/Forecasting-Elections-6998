@@ -49,10 +49,19 @@ def fit_rmse_day_x(x):
 		y.append( 0.03 + (10 **(-6.6)) * (num ** 2) )
 	return y	
 
+global_mu_b_prior =  pd.Series([0.36867689, -0.49254250, -0.51521880, -0.18619350,  0.42061133,  0.07034492,  0.30673465,  2.21745452,
+  0.32478141, -0.02352927, -0.19076734,  0.84601796,  0.08023953, -0.68902430,  0.34188235, -0.25243580,
+ -0.45556944, -0.47721889, -0.39967593,  0.49229151,  0.47397613,  0.26232374,  0.16703326,  0.11649423,
+ -0.19752801, -0.28167085, -0.28033387, -0.07970275, -0.40352635, -0.46164985,  0.07265918,  0.29239866,
+  0.17382365,  0.10663749,  0.38637677,  0.01833138, -0.71841025,  0.21342053,  0.07795340,  0.50087181,
+ -0.24926240, -0.37161590, -0.43667404, -0.34371921, -1.00397747,  0.08452381,  0.69000778,  0.25777319, 0.13624175, -0.53900218, -0.88990233])
+print(len(global_mu_b_prior))
+
 def pass_data():
 #	ind_list = ["MI","OH"]
 	election_day = datetime.strptime("2016-11-08", "%Y-%m-%d").date()
 	start_date = datetime.strptime("2016-03-01", "%Y-%m-%d").date()
+	RUN_DATE = datetime.strptime("2016-11-08", "%Y-%m-%d").date()
 
 	cols = ['state', 'pollster', 'number.of.observations','population', 'mode',
 		'start.date',
@@ -358,12 +367,8 @@ def pass_data():
 	data["mu_b_T_scale"] = mu_b_T_scale
 	data["random_walk_scale"] = random_walk_scale
 
-	data["mu_b_prior"] = data["mu_b_prior"].loc[ind_list]
-
-#	print(df['polltype'])
-#	cols = ["state", "pred"]
-#	df = pd.read_csv("../../data/state_priors_08_12_16.csv", usecols=cols)
-	print(data["N_national_polls"])
+	global_mu_b_prior.index = data["mu_b_prior"].index
+	print(global_mu_b_prior)
 	return data, polls, res, dfTemp
 
 def main():
