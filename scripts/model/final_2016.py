@@ -235,8 +235,6 @@ def pass_data():
     national_cov_matrix_error_sd = ((state_weights.transpose().dot(
                                      state_covariance_0)).dot(
                                      state_weights)) ** 0.5
-    print(state_weights)
-    print(national_cov_matrix_error_sd)
     days_til_election = [100]
     expected_national_mu_b_T_error = fit_rmse_day_x(days_til_election)[0]
 
@@ -255,6 +253,7 @@ def pass_data():
     national_mu_prior = (coefs["Intercept"]
                          + coefs["juneapp"] * 4
                          + coefs["q2gdp"] * 1.1)
+    print(national_mu_prior)
 
     # on correct scale
     national_mu_prior = national_mu_prior / 100
@@ -347,11 +346,10 @@ def pass_data():
     data["polling_bias_scale"] = polling_bias_scale
     data["mu_b_T_scale"] = mu_b_T_scale
     data["random_walk_scale"] = random_walk_scale
-    data["ev_state"] = ev_state
 
     g_mu_b_prior.index = data["mu_b_prior"].index
     data["mu_b_prior"] = g_mu_b_prior
-    return data, polls, res, dfTemp
+    return data, polls, res, dfTemp, ev_state
 
 
 def main():
