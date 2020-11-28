@@ -346,9 +346,12 @@ def pass_data():
     data["polling_bias_scale"] = polling_bias_scale
     data["mu_b_T_scale"] = mu_b_T_scale
     data["random_walk_scale"] = random_walk_scale
+    data['state_covariance_mu_b_walk'] = state_covariance_mu_b_walk.to_numpy()
+    data['state_covariance_mu_b_T'] = state_covariance_mu_b_T.to_numpy()
+    data['state_covariance_polling_bias'] = state_covariance_polling_bias.to_numpy()
 
-    g_mu_b_prior.index = data["mu_b_prior"].index
-    data["mu_b_prior"] = g_mu_b_prior
+    #g_mu_b_prior.index = data["mu_b_prior"].index
+    #data["mu_b_prior"] = g_mu_b_prior
     return data, polls, res, dfTemp, ev_state
 
 
