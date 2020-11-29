@@ -184,11 +184,11 @@ def model(data, polls=None):
 
 # MCMC with No-U Turn Sampler
 def Inference_MCMC(model, data, polls, n_samples=500,
-                   n_warmup=500, n_chains=1):
+                   n_warmup=500, n_chains=1,
+                   max_tree_depth=6):
 
     nuts_kernel = NUTS(model, adapt_step_size=True,
-                       jit_compile=True, ignore_jit_warnings=True,
-                       max_tree_depth=6)
+                       jit_compile=True, ignore_jit_warnings=True)
 
     mcmc = MCMC(nuts_kernel, num_samples=n_samples, warmup_steps=n_warmup,
                 num_chains=n_chains)
