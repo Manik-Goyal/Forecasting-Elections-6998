@@ -123,11 +123,12 @@ def model(data, polls=None):
         raw_polling_bias = pyro.sample("raw_polling_bias", dist.Normal(0., 1.))
 
     # Transformed Parameters
-    mu_b = pyro.deterministic('mu_b', torch.empty(S, T))    # Initalize mu_b
+    mu_b = torch.zeros(S, T)   # Initalize mu_b
     mu_b[:, T-1] = cholesky_ss_cov_mu_b_T @ raw_mu_b_T.double() + mu_b_prior
     for i in range(2, T + 1):
         mu_b[:, T - i] = cholesky_ss_cov_mu_b_walk @ \
             raw_mu_b[:, T - i].double() + mu_b[:, T + 1 - i]
+    mu_b = pyro.deterministic('mu_b', mu_b)
 
     mu_c = pyro.deterministic('mu_c', raw_mu_c * sigma_c)
     mu_m = pyro.deterministic('mu_m', raw_mu_m * sigma_m)
@@ -135,12 +136,13 @@ def model(data, polls=None):
     sigma_rho = pyro.deterministic('sigma_rho', torch.sqrt(1-(rho_e_bias)**2)
                                    * sigma_e_bias)
 
-    e_bias = pyro.deterministic('e_bias', torch.empty(T))   # Initalize e_bias
+    e_bias = torch.zeros(T)     # Initalize e_bias
     e_bias[0] = raw_e_bias[0] * sigma_e_bias
     for t in range(1, T):
         e_bias[t] = mu_e_bias + rho_e_bias * \
             (e_bias[t - 1] - mu_e_bias) + raw_e_bias[t] * sigma_rho
 
+    e_bias = pyro.deterministic('e_bias', e_bias)
     polling_bias = pyro.deterministic('polling_bias', cholesky_ss_cov_poll_bias
                                       @ raw_polling_bias.double())
 
@@ -152,29 +154,29 @@ def model(data, polls=None):
                            polling_bias.T.double() @
                            state_weights.double())
 
-    logit_pi_democrat_state = pyro.deterministic('logit_pi_democrat_state',
-                                                 torch.zeros(N_state_polls))
+    logit_pi_democrat_state = \
+        pyro.deterministic('logit_pi_democrat_state',
+                           mu_b[state, day_state] + mu_c[poll_state] +
+                           mu_m[poll_mode_state] + mu_pop[poll_pop_state] +
+                           unadjusted_state * e_bias[day_state] +
+                           raw_measure_noise_state *
+                           sigma_measure_noise_state +
+                           polling_bias[state].float())
+
     logit_pi_democrat_national = \
         pyro.deterministic('logit_pi_democrat_national',
-                           torch.zeros(N_national_polls))
-
-    logit_pi_democrat_state = mu_b[state, day_state] + mu_c[poll_state] + \
-        mu_m[poll_mode_state] + mu_pop[poll_pop_state] + \
-        unadjusted_state * e_bias[day_state] + \
-        raw_measure_noise_state * sigma_measure_noise_state + \
-        polling_bias[state].float()
+                           national_mu_b_average[day_national] +
+                           mu_c[poll_national] + mu_m[poll_mode_national] +
+                           mu_pop[poll_pop_national] +
+                           unadjusted_national * e_bias[day_national] +
+                           raw_measure_noise_national *
+                           sigma_measure_noise_national +
+                           national_polling_bias_average)
 
     pyro.sample("n_democrat_state",
                 dist.Binomial(n_two_share_state,
                               logits=logit_pi_democrat_state),
                 obs=n_democrat_state)
-
-    logit_pi_democrat_national = national_mu_b_average[day_national] + \
-        mu_c[poll_national] + mu_m[poll_mode_national] + \
-        mu_pop[poll_pop_national] + \
-        unadjusted_national * e_bias[day_national] + \
-        raw_measure_noise_national * sigma_measure_noise_national + \
-        national_polling_bias_average
 
     pyro.sample("n_democrat_national",
                 dist.Binomial(n_two_share_national,
@@ -188,7 +190,8 @@ def Inference_MCMC(model, data, polls, n_samples=500,
                    max_tree_depth=6):
 
     nuts_kernel = NUTS(model, adapt_step_size=True,
-                       jit_compile=True, ignore_jit_warnings=True)
+                       jit_compile=True, ignore_jit_warnings=True,
+                       max_tree_depth=max_tree_depth)
 
     mcmc = MCMC(nuts_kernel, num_samples=n_samples, warmup_steps=n_warmup,
                 num_chains=n_chains)
@@ -215,13 +218,13 @@ def sample_posterior_predictive(model, posterior_samples, n_samples, data):
 
 
 # Generating Quantity from posterior sample
-def predicted_score(posterior_predictive, data):
-    T = data['T']
-    S = data['S']
-    predicted = torch.empty(T, S)
-    mu_b = posterior_predictive["mu_b"].squeeze()[-1]
-
+def predicted_score(posterior_predictive, num_samples, data):
+    N = num_samples     # Number of samples extracted from posterior
+    T = data['T']       # Number of days
+    S = data['S']       # Number of states
+    predicted = torch.empty(N, T, S)
+    mu_b = posterior_predictive["mu_b"].squeeze()
     for s in range(S):
-        predicted[:, s] = expit(mu_b[s, :])
+        predicted[:, :, s] = expit(mu_b[:, s, :])
 
     return predicted
