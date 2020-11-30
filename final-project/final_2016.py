@@ -41,7 +41,7 @@ EV_Index = {0: "AL", 1: "AK", 2: "AZ", 3: "AR", 4: "CA", 5: "CO", 6: "CT",
             43: "TX", 44: "UT", 45: "VT", 46: "VA", 47: "WA", 48: "WV",
             49: "WI", 50: "WY"}
 
-EV = {"AK": 3, "AL": 9, "AZ": 11, "AR": 6, "CA": 55, "CO":9,"CT": 7,
+EV = {"AK": 3, "AL": 9, "AZ": 11, "AR": 6, "CA": 55, "CO": 9, "CT": 7,
       "DE": 3, "FL": 29, "GA": 16, "HI": 4, "ID": 4, "IL": 20, "IN": 11,
       "IA": 6, "KS": 6, "KY": 8, "LA": 8, "ME": 4, "MD": 10, "MA": 11,
       "MI": 16, "MN": 10, "MS": 6, "MO": 10, "MT": 3, "NE": 5, "NV": 6,
@@ -237,10 +237,10 @@ def pass_data():
 
     # save the inital scaling factor
     state_weights = state_weights.loc[ind_list]
-    national_cov_matrix_error_sd = ((state_weights.transpose().dot(
-                                     state_covariance_0)).dot(
-                                     state_weights)) ** 0.5
-    days_til_election = [188] # ELECTION DATE - START DATE
+    # national_cov_matrix_error_sd = ((state_weights.transpose().dot(
+    #                                 state_covariance_0)).dot(
+    #                                 state_weights)) ** 0.5
+    days_til_election = [188]   # ELECTION DATE - START DATE
     expected_national_mu_b_T_error = fit_rmse_day_x(days_til_election)[0]
 
     # on the probability scale -- we convert later down
