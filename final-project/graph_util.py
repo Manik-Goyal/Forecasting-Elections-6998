@@ -116,14 +116,73 @@ def plot_ev_over_time(EV_C_mu, EV_C_std, EV_T_mu, EV_T_std):
     upper_T = [x + y for x, y in zip(EV_T_mu, EV_T_std)]
     lower_T = [x - y for x, y in zip(EV_T_mu, EV_T_std)]
 
+    upper_2C = [x + 2*y for x, y in zip(EV_C_mu, EV_C_std)]
+    lower_2C = [x - 2*y for x, y in zip(EV_C_mu, EV_C_std)]
+
+    upper_2T = [x + 2 * y for x, y in zip(EV_T_mu, EV_T_std)]
+    lower_2T = [x - 2 * y for x, y in zip(EV_T_mu, EV_T_std)]
+
+    fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+
     sns.lineplot(data=np.array(EV_C_mu), color="blue")
     sns.lineplot(data=np.array(EV_T_mu), color="red")
     plt.fill_between(range(len(EV_C_mu)), upper_C, lower_C,
                      facecolor="blue", alpha=0.25)
+    plt.fill_between(range(len(EV_C_mu)), upper_2C, lower_2C,
+                     facecolor="blue", alpha=0.15)
+
     plt.fill_between(range(len(EV_T_mu)), upper_T, lower_T,
                      facecolor="red", alpha=0.25)
-    plt.legend(['Clinton', 'Trump'])
+    plt.fill_between(range(len(EV_T_mu)), upper_2T, lower_2T,
+                     facecolor="red", alpha=0.15)
+
+    plt.annotate(' Clinton: %d' % EV_C_mu[-1],
+                 xy=(252, EV_C_mu[-1]), fontsize=12, color='blue')
+    plt.annotate(' Trump: %d' % EV_T_mu[-1],
+                 xy=(252, EV_T_mu[-1]), fontsize=12, color='red')
+
+    plt.axhline(y=270, color='black', linestyle='-', xmax=0.90)
+    plt.text(50, 270, '270 to win', fontsize=12, va='center',
+             ha='center', backgroundcolor='w')
+    plt.axvline(x=252, color='black', linestyle='-')
+    plt.text(252, 400, 'Election Day', fontsize=12, va='center',
+             ha='center', backgroundcolor='w')
+    plt.legend(['Clinton', 'Trump'], bbox_to_anchor=(0.5, -0.15))
     plt.xlabel("Day")
     plt.ylabel("Electoral Votes")
     plt.title("Number of Electoral Votes over Time w. Deviation")
+    plt.xlim(0, 280)
     plt.show()
+    return
+
+
+def summary(v):
+    site_stats = {
+            "mean": torch.mean(v, 0),
+            "std": torch.std(v, 0),
+            "5%": v.kthvalue(int(len(v) * 0.05), dim=0)[0],
+            "95%": v.kthvalue(int(len(v) * 0.95), dim=0)[0],
+        }
+
+    return site_stats
+
+
+def plot_posterior_predictive_check(obs, y_true, n_polls):
+    x = sorted(np.random.randint(0, n_polls, 500))
+    y = summary(obs)
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(20, 6), sharey=True)
+    fig.suptitle("Posterior Predictive Check", fontsize=16)
+    ax[0].plot(x, np.take(y_true, x), "o")
+    ax[0].plot(x, np.take(y['mean'], x))
+    ax[0].set_xlabel("Predicted mean vs True", fontsize=15)
+
+    ax[1].plot(x, np.take(y_true, x), "o")
+    ax[1].fill_between(x, np.take(y["5%"], x),
+                       np.take(y["95%"], x),
+                       alpha=0.8)
+    ax[1].set_xlabel("Predicted with 90% CI vs True", fontsize=15)
+
+    return

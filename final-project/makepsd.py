@@ -1,5 +1,5 @@
-import numpy as np
 from numpy import linalg as la
+
 
 def nearestPD(A):
     """Find the nearest positive-definite matrix to input
@@ -27,14 +27,15 @@ def nearestPD(A):
 
     spacing = np.spacing(la.norm(A))
 
-    I = np.eye(A.shape[0])
+    Identity = np.eye(A.shape[0])
     k = 1
     while not isPD(A3):
         mineig = np.min(np.real(la.eigvals(A3)))
-        A3 += I * (-mineig * k**2 + spacing)
+        A3 += Identity * (-mineig * k**2 + spacing)
         k += 1
 
     return A3
+
 
 def isPD(B):
     """Returns true when input is positive-definite, via Cholesky"""
@@ -43,6 +44,7 @@ def isPD(B):
         return True
     except la.LinAlgError:
         return False
+
 
 if __name__ == '__main__':
     import numpy as np
