@@ -253,7 +253,6 @@ def pass_data():
 
     model = smf.ols(formula='incvote ~ juneapp + q2gdp', data=dfTemp)
     res = model.fit()
-    print(res.summary())
     coefs = res.params
     national_mu_prior = (coefs["Intercept"]
                          + coefs["juneapp"] * 4
