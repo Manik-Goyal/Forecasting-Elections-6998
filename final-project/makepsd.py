@@ -1,4 +1,5 @@
 from numpy import linalg as la
+import numpy as np
 
 
 def nearestPD(A):
@@ -44,15 +45,3 @@ def isPD(B):
         return True
     except la.LinAlgError:
         return False
-
-
-if __name__ == '__main__':
-    import numpy as np
-    for i in range(10):
-        for j in range(2, 100):
-            A = np.random.randn(j, j)
-            print(A)
-            B = nearestPD(A)
-            print(B)
-            assert(isPD(B))
-    print('unit test passed!')
